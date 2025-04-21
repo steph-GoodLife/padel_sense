@@ -8,7 +8,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_blue_plus: ^1.35.4  # ✅ version stable testée
+  flutter_blue_plus: ^1.26.1
 
 dev_dependencies:
   flutter_test:
