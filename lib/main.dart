@@ -152,10 +152,19 @@ class _BluetoothRealScreenState extends State<BluetoothRealScreen> {
     });
   }
 
+  void _connectToDevice(BluetoothDevice device) async {
+    await FlutterBluePlus.stopScan(); // Stop le scan
+    await device.connect(); // Essaie de se connecter
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => DeviceDataScreen(device: device)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan BLE')),
+      appBar: AppBar(title: const Text('Scan BLE (Réel)')),
       body: ListView.builder(
         itemCount: scanResults.length,
         itemBuilder: (context, index) {
@@ -164,6 +173,7 @@ class _BluetoothRealScreenState extends State<BluetoothRealScreen> {
             title: Text(result.device.name.isNotEmpty ? result.device.name : '(Inconnu)'),
             subtitle: Text(result.device.id.id),
             trailing: Text('${result.rssi} dBm'),
+            onTap: () => _connectToDevice(result.device),
           );
         },
       ),
@@ -197,6 +207,66 @@ class SessionHistoryScreen extends StatelessWidget {
             subtitle: Text('Frappes : ${session['frappes']} | Puissance : ${session['puissance']}'),
           );
         },
+      ),
+    );
+  }
+}
+
+// ---------------------------
+// Device Data Screen (lecture données BLE)
+// ---------------------------
+
+class DeviceDataScreen extends StatefulWidget {
+  final BluetoothDevice device;
+
+  const DeviceDataScreen({super.key, required this.device});
+
+  @override
+  State<DeviceDataScreen> createState() => _DeviceDataScreenState();
+}
+
+class _DeviceDataScreenState extends State<DeviceDataScreen> {
+  List<int> receivedData = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToData();
+  }
+
+  void _listenToData() async {
+    List<BluetoothService> services = await widget.device.discoverServices();
+    for (var service in services) {
+      for (var charac in service.characteristics) {
+        if (charac.properties.notify) {
+          await charac.setNotifyValue(true);
+          charac.value.listen((value) {
+            setState(() {
+              receivedData = value;
+            });
+          });
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Données reçues')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: receivedData.isEmpty
+            ? const Center(child: Text('⏳ En attente de données...'))
+            : ListView.builder(
+                itemCount: receivedData.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    title: Text('Octet $index'),
+                    trailing: Text('${receivedData[index]}'),
+                  );
+                },
+              ),
       ),
     );
   }
