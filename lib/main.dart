@@ -227,7 +227,14 @@ class DeviceDataScreen extends StatefulWidget {
 }
 
 class _DeviceDataScreenState extends State<DeviceDataScreen> {
-  List<int> receivedData = [];
+  int hitCount = 0;
+  double accZ = 0;
+  double speed = 0;
+  int lastHitTime = 0;
+  double lastAccZ = 0;
+  final double threshold = 3.5;
+
+  List<double> sessionSpeeds = [];
 
   @override
   void initState() {
@@ -242,111 +249,24 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
         if (charac.properties.notify) {
           await charac.setNotifyValue(true);
           charac.value.listen((value) {
-            setState(() {
-              receivedData = value;
-            });
-          });
-        }
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Données reçues')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => LiveSessionScreen(device: widget.device)),
-                );
-              },
-              child: const Text("🎾 Démarrer la session"),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: receivedData.isEmpty
-                  ? const Center(child: Text('⏳ En attente de données...'))
-                  : ListView.builder(
-                      itemCount: receivedData.length,
-                      itemBuilder: (context, index) {
-                        return ListTile(
-                          title: Text('Octet $index'),
-                          trailing: Text('${receivedData[index]}'),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class LiveSessionScreen extends StatefulWidget {
-  final BluetoothDevice device;
-
-  const LiveSessionScreen({super.key, required this.device});
-
-  @override
-  State<LiveSessionScreen> createState() => _LiveSessionScreenState();
-}
-
-class _LiveSessionScreenState extends State<LiveSessionScreen> {
-  int hitCount = 0;
-  double maxPower = 0;
-  String lastAxis = '-';
-  DateTime lastHitTime = DateTime.now().subtract(const Duration(seconds: 1));
-
-  @override
-  void initState() {
-    super.initState();
-    _startTracking();
-  }
-
-  void _startTracking() async {
-    List<BluetoothService> services = await widget.device.discoverServices();
-    for (var service in services) {
-      for (var charac in service.characteristics) {
-        if (charac.properties.notify) {
-          await charac.setNotifyValue(true);
-          charac.value.listen((value) {
             if (value.length >= 6) {
-              final data = ByteData.sublistView(Uint8List.fromList(value));
+              int rawZ = _toSignedInt16(value[4], value[5]);
+              double newAccZ = rawZ / 32768.0 * 16;
 
-              int accX = data.getInt16(0, Endian.little);
-              int accY = data.getInt16(2, Endian.little);
-              int accZ = data.getInt16(4, Endian.little);
+              final now = DateTime.now().millisecondsSinceEpoch;
 
-              double power = accX.abs().toDouble() + accY.abs().toDouble() + accZ.abs().toDouble();
-
-              if (power > 5000) {
-                final now = DateTime.now();
-                if (now.difference(lastHitTime).inMilliseconds > 300) {
-                  setState(() {
-                    hitCount++;
-                    lastHitTime = now;
-
-                    if (power > maxPower) {
-                      maxPower = power;
-                    }
-
-                    if (accX.abs() > accY.abs() && accX.abs() > accZ.abs()) {
-                      lastAxis = "X";
-                    } else if (accY.abs() > accX.abs() && accY.abs() > accZ.abs()) {
-                      lastAxis = "Y";
-                    } else {
-                      lastAxis = "Z";
-                    }
-                  });
-                }
+              if ((newAccZ - lastAccZ).abs() > threshold && now - lastHitTime > 500) {
+                hitCount++;
+                lastHitTime = now;
               }
+
+              lastAccZ = newAccZ;
+
+              setState(() {
+                accZ = newAccZ;
+                speed = (accZ * 9.81) * 3.6;
+                sessionSpeeds.add(speed);
+              });
             }
           });
         }
@@ -354,25 +274,117 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     }
   }
 
+  int _toSignedInt16(int low, int high) {
+    int value = (high << 8) | low;
+    return value >= 0x8000 ? value - 0x10000 : value;
+  }
+
+  double calculateAverageSpeed() {
+    if (sessionSpeeds.isEmpty) return 0;
+    return sessionSpeeds.reduce((a, b) => a + b) / sessionSpeeds.length;
+  }
+
+  String mostFrequentZone() {
+    return "Z"; // À affiner plus tard selon heuristique
+  }
+
+  int calculateScore() {
+    return (calculateAverageSpeed() / 80 * 100).clamp(0, 100).toInt();
+  }
+
+  void endSession() {
+    final session = SessionData(
+      date: DateTime.now(),
+      frappes: hitCount,
+      vitesseMoyenne: calculateAverageSpeed(),
+      zoneImpact: mostFrequentZone(),
+      scorePerformance: calculateScore(),
+      vitesses: sessionSpeeds,
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SessionRecapScreen(session: session)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("📊 Session en cours")),
+      appBar: AppBar(title: const Text('Session en direct')),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Frappes détectées : $hitCount", style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 12),
-            Text("Puissance max (approx.) : ${maxPower.toInt()}", style: const TextStyle(fontSize: 18)),
-            const SizedBox(height: 12),
-            Text("Dernier axe impacté : $lastAxis", style: const TextStyle(fontSize: 18)),
+            Text('🎾 Frappes détectées : $hitCount', style: const TextStyle(fontSize: 20)),
+            const SizedBox(height: 20),
+            Text('📐 Accélération Z : ${accZ.toStringAsFixed(2)} G', style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 20),
+            Text('🚀 Vitesse estimée : ${speed.toStringAsFixed(1)} km/h', style: const TextStyle(fontSize: 16)),
             const Spacer(),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("⏹ Terminer la session"),
-            ),
+            Center(
+              child: ElevatedButton(
+                onPressed: endSession,
+                child: const Text('⏹ Terminer la session'),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+//------------------------------------------
+// stockage en memoire d'une session
+//------------------------------------------
+
+class SessionData {
+  final DateTime date;
+  final int frappes;
+  final double vitesseMoyenne;
+  final String zoneImpact;
+  final int scorePerformance;
+  final List<double> vitesses;
+
+  SessionData({
+    required this.date,
+    required this.frappes,
+    required this.vitesseMoyenne,
+    required this.zoneImpact,
+    required this.scorePerformance,
+    required this.vitesses,
+  });
+}
+
+//-----------------------------------------
+// nouvelles page - moyenne de la session
+//-----------------------------------------
+
+class SessionRecapScreen extends StatelessWidget {
+  final SessionData session;
+
+  const SessionRecapScreen({super.key, required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Résumé de la session')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('📅 ${session.date.toLocal()}'),
+            const SizedBox(height: 10),
+            Text('🎾 Frappes : ${session.frappes}'),
+            Text('⚡ Vitesse moyenne : ${session.vitesseMoyenne.toStringAsFixed(1)} km/h'),
+            Text('🎯 Zone impact : ${session.zoneImpact}'),
+            Text('📈 Score : ${session.scorePerformance}%'),
+            const SizedBox(height: 20),
+            const Text('📊 Détail des vitesses :'),
+            ...session.vitesses.map((v) => Text('• ${v.toStringAsFixed(1)} km/h')).toList(),
           ],
         ),
       ),
