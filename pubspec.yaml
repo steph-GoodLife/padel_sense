@@ -19,3 +19,4 @@ flutter:
   assets:
     - assets/logo.png
     - assets/splash.png
+    - assets/bg-resume.png

@@ -230,11 +230,16 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
   int hitCount = 0;
   double accZ = 0;
   double speed = 0;
+  String hitType = '-'; // "Coup droit" ou "Revers"
+  List<String> allHits = []; // Pour récap éventuel
   int lastHitTime = 0;
   double lastAccZ = 0;
   final double threshold = 3.5;
 
   List<double> sessionSpeeds = [];
+
+  int coupsDroit = 0;
+  int revers = 0;
 
   @override
   void initState() {
@@ -250,14 +255,29 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
           await charac.setNotifyValue(true);
           charac.value.listen((value) {
             if (value.length >= 6) {
+              int rawX = _toSignedInt16(value[0], value[1]);
+              int rawY = _toSignedInt16(value[2], value[3]);
               int rawZ = _toSignedInt16(value[4], value[5]);
+
               double newAccZ = rawZ / 32768.0 * 16;
+              double newAccY = rawY / 32768.0 * 16;
 
               final now = DateTime.now().millisecondsSinceEpoch;
 
               if ((newAccZ - lastAccZ).abs() > threshold && now - lastHitTime > 500) {
                 hitCount++;
                 lastHitTime = now;
+
+                sessionSpeeds.add(speed); // Ajout à chaque frappe
+
+                // Classification simple selon l'axe
+                if (newAccZ > 0) {
+                  coupsDroit++;
+                  hitType = "Coup droit";
+                } else {
+                  revers++;
+                  hitType = "Revers";
+                }
               }
 
               lastAccZ = newAccZ;
@@ -265,7 +285,6 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
               setState(() {
                 accZ = newAccZ;
                 speed = (accZ * 9.81) * 3.6;
-                sessionSpeeds.add(speed);
               });
             }
           });
@@ -300,6 +319,8 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
       zoneImpact: mostFrequentZone(),
       scorePerformance: calculateScore(),
       vitesses: sessionSpeeds,
+      coupsDroit: coupsDroit,
+      revers: revers,
     );
 
     Navigator.push(
@@ -322,6 +343,9 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
             Text('📐 Accélération Z : ${accZ.toStringAsFixed(2)} G', style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 20),
             Text('🚀 Vitesse estimée : ${speed.toStringAsFixed(1)} km/h', style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 20),
+            Text('🧭 Dernier coup détecté : $hitType', style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 30),
             const Spacer(),
             Center(
               child: ElevatedButton(
@@ -347,6 +371,8 @@ class SessionData {
   final String zoneImpact;
   final int scorePerformance;
   final List<double> vitesses;
+  final int coupsDroit;
+  final int revers;
 
   SessionData({
     required this.date,
@@ -355,12 +381,63 @@ class SessionData {
     required this.zoneImpact,
     required this.scorePerformance,
     required this.vitesses,
+    required this.coupsDroit,
+    required this.revers,
   });
 }
 
 //-----------------------------------------
 // nouvelles page - moyenne de la session
 //-----------------------------------------
+
+// class SessionRecapScreen extends StatelessWidget {
+//   final SessionData session;
+
+//   const SessionRecapScreen({super.key, required this.session});
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(title: const Text('Résumé de la session')),
+//       body: Padding(
+//         padding: const EdgeInsets.all(16.0),
+//         child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Text('📅 Date : ${session.date.toLocal()}',
+//                 style: const TextStyle(fontSize: 18)),
+//             const SizedBox(height: 10),
+//             Text('🎾 Frappes totales : ${session.frappes}',
+//                 style: const TextStyle(fontSize: 18)),
+//             Text('👉 Coup droit : ${session.coupsDroit}',
+//                 style: const TextStyle(fontSize: 16)),
+//             Text('👈 Revers : ${session.revers}',
+//                 style: const TextStyle(fontSize: 16)),
+//             const SizedBox(height: 20),
+//             Text('⚡ Vitesse moyenne : ${session.vitesseMoyenne.toStringAsFixed(1)} km/h',
+//                 style: const TextStyle(fontSize: 18)),
+//             Text('🎯 Zone impact : ${session.zoneImpact}',
+//                 style: const TextStyle(fontSize: 16)),
+//             Text('📈 Score de performance : ${session.scorePerformance}%',
+//                 style: const TextStyle(fontSize: 16)),
+//             const SizedBox(height: 20),
+//             const Text('📊 Détail des vitesses :',
+//                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+//             const SizedBox(height: 10),
+//             Expanded(
+//               child: ListView.builder(
+//                 itemCount: session.vitesses.length,
+//                 itemBuilder: (context, index) {
+//                   return Text('• ${session.vitesses[index].toStringAsFixed(1)} km/h');
+//                 },
+//               ),
+//             ),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 class SessionRecapScreen extends StatelessWidget {
   final SessionData session;
@@ -370,23 +447,114 @@ class SessionRecapScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Résumé de la session')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('📅 ${session.date.toLocal()}'),
-            const SizedBox(height: 10),
-            Text('🎾 Frappes : ${session.frappes}'),
-            Text('⚡ Vitesse moyenne : ${session.vitesseMoyenne.toStringAsFixed(1)} km/h'),
-            Text('🎯 Zone impact : ${session.zoneImpact}'),
-            Text('📈 Score : ${session.scorePerformance}%'),
-            const SizedBox(height: 20),
-            const Text('📊 Détail des vitesses :'),
-            ...session.vitesses.map((v) => Text('• ${v.toStringAsFixed(1)} km/h')).toList(),
-          ],
-        ),
+      body: Stack(
+        children: [
+          // Image de fond
+          SizedBox.expand(
+            child: Image.asset(
+              'assets/bg-resume.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Contenu semi-transparent au-dessus
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 🔙 Bouton retour
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                  const Text(
+                    "Résumé de la session",
+                    style: TextStyle(
+                      fontSize: 26,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _statCard("📅 Date", session.date.toLocal().toString().split(' ')[0]),
+                  _statCard("🎾 Frappes", session.frappes.toString()),
+                  _statCard("💥 Coups droits", session.coupsDroit.toString()),
+                  _statCard("↩️ Revers", session.revers.toString()),
+                  _statCard("🎯 Zone impact", session.zoneImpact),
+                  _statCard("🚀 Vitesse moyenne", "${session.vitesseMoyenne.toStringAsFixed(1)} km/h"),
+
+                  const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("📊 Moyenne par 5 frappes :",
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 10),
+                          ...calculateGroupedAverages(session.vitesses, 5).asMap().entries.map(
+                            (entry) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                "Frappes ${entry.key * 5 + 1}-${(entry.key + 1) * 5} : ${entry.value.toStringAsFixed(1)} km/h",
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+//Calcul par 5 coups
+  List<double> calculateGroupedAverages(List<double> speeds, int groupSize) {
+  List<double> averages = [];
+  for (int i = 0; i < speeds.length; i += groupSize) {
+    final group = speeds.skip(i).take(groupSize).toList();
+    if (group.isNotEmpty) {
+      final avg = group.reduce((a, b) => a + b) / group.length;
+      averages.add(avg);
+    }
+  }
+  return averages;
+}
+
+  Widget _statCard(String label, String value) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Text(label,
+              style: const TextStyle(color: Colors.white, fontSize: 16)),
+          const Spacer(),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }
