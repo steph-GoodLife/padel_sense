@@ -329,28 +329,89 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
     );
   }
 
+  Color getSpeedColor(double speed) {
+    if (speed < 40) return Colors.green;
+    if (speed < 65) return Colors.orange;
+    return Colors.red;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Session en direct')),
+      backgroundColor: const Color(0xFF101010),
+      appBar: AppBar(
+        title: const Text('Session en direct'),
+        backgroundColor: Colors.black,
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('🎾 Frappes détectées : $hitCount', style: const TextStyle(fontSize: 20)),
+            Text('🎾 Frappes détectées : $hitCount',
+                style: const TextStyle(fontSize: 22, color: Colors.white)),
             const SizedBox(height: 20),
-            Text('📐 Accélération Z : ${accZ.toStringAsFixed(2)} G', style: const TextStyle(fontSize: 16)),
-            const SizedBox(height: 20),
-            Text('🚀 Vitesse estimée : ${speed.toStringAsFixed(1)} km/h', style: const TextStyle(fontSize: 16)),
-            const SizedBox(height: 20),
-            Text('🧭 Dernier coup détecté : $hitType', style: const TextStyle(fontSize: 16)),
+            Text('📐 Accélération Z : ${accZ.toStringAsFixed(2)} G',
+                style: const TextStyle(fontSize: 18, color: Colors.white70)),
             const SizedBox(height: 30),
-            const Spacer(),
+
+            // Vitesse estimée
             Center(
-              child: ElevatedButton(
-                onPressed: endSession,
-                child: const Text('⏹ Terminer la session'),
+              child: Column(
+                children: [
+                  Text('🚀 ${speed.toStringAsFixed(1)} km/h',
+                      style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: LinearProgressIndicator(
+                      value: (speed / 100).clamp(0.0, 1.0),
+                      minHeight: 20,
+                      valueColor: AlwaysStoppedAnimation<Color>(getSpeedColor(speed)),
+                      backgroundColor: Colors.white24,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 40),
+            Text('🧭 Dernier coup détecté : $hitType',
+                style: const TextStyle(fontSize: 18, color: Colors.white70)),
+
+            const Spacer(),
+
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final session = SessionData(
+                    date: DateTime.now(),
+                    frappes: hitCount,
+                    vitesseMoyenne: calculateAverageSpeed(),
+                    zoneImpact: mostFrequentZone(),
+                    scorePerformance: calculateScore(),
+                    vitesses: sessionSpeeds,
+                    coupsDroit: coupsDroit,
+                    revers: revers,
+                  );
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SessionRecapScreen(session: session),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.stop),
+                label: const Text("Terminer la session"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
+                  textStyle: const TextStyle(fontSize: 18),
+                ),
               ),
             )
           ],
@@ -358,6 +419,7 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
       ),
     );
   }
+
 }
 
 //------------------------------------------
