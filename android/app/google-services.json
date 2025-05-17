@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "9222646292",
+    "project_id": "padalytics",
+    "storage_bucket": "padalytics.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:9222646292:android:2969e5b83887e8c2c39501",
+        "android_client_info": {
+          "package_name": "com.example.padel_sense"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC7qnDbNG1Nm81-drLltV8EFeITjlPipKw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

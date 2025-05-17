@@ -1,6 +1,6 @@
 name: padalytics
 description: Track your padel stats in real-time
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ">=2.19.0 <4.0.0"
@@ -8,7 +8,21 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # Bluetooth
   flutter_blue_plus: ^1.26.1
+
+  # Firebase
+  firebase_core: ^2.25.0
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.13.0
+  firebase_storage: ^11.6.0
+
+  # Image picker
+  image_picker: ^1.0.4
+
+  # Icône de lancement
+  flutter_launcher_icons: ^0.13.1
 
 dev_dependencies:
   flutter_test:
@@ -20,3 +34,13 @@ flutter:
     - assets/logo.png
     - assets/splash.png
     - assets/bg-resume.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo-app-screen.png"   # image (512x512 recommandé)
+  min_sdk_android: 21             # optionnel, mais utile pour les versions récentes
+
+dependency_overrides:
+  firebase_auth_web: 5.8.13
+  firebase_storage_web: 3.6.22
