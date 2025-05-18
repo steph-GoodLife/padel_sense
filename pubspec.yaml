@@ -24,6 +24,8 @@ dependencies:
   # Icône de lancement
   flutter_launcher_icons: ^0.13.1
 
+  permission_handler: ^11.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
