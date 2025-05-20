@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -220,21 +221,61 @@ class SessionHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, String>> fakeSessions = [
-      {"date": "26/04/2025", "frappes": "120", "puissance": "54 km/h"},
-      {"date": "25/04/2025", "frappes": "98", "puissance": "49 km/h"},
-      {"date": "24/04/2025", "frappes": "110", "puissance": "52 km/h"},
-    ];
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const Center(child: Text("Utilisateur non connecté"));
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Historique Sessions')),
-      body: ListView.builder(
-        itemCount: fakeSessions.length,
-        itemBuilder: (context, index) {
-          final session = fakeSessions[index];
-          return ListTile(
-            title: Text('Date : ${session['date']}'),
-            subtitle: Text('Frappes : ${session['frappes']} | Puissance : ${session['puissance']}'),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('sessions')
+            .where('userId', isEqualTo: user.uid)
+            .orderBy('date', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("Aucune session trouvée."));
+          }
+
+          final sessions = snapshot.data!.docs;
+
+          return ListView.builder(
+            itemCount: sessions.length,
+            itemBuilder: (context, index) {
+              final session = sessions[index];
+              final data = session.data() as Map<String, dynamic>;
+
+              return ListTile(
+                title: Text("📅 ${data['date'].toDate().toString().split(' ')[0]}"),
+                subtitle: Text("🎾 ${data['frappes']} frappes • 🚀 ${data['vitesseMoyenne'].toStringAsFixed(1)} km/h"),
+                onTap: () {
+                  final sessionData = SessionData(
+                    date: data['date'].toDate(),
+                    frappes: data['frappes'],
+                    vitesseMoyenne: data['vitesseMoyenne'],
+                    zoneImpact: data['zoneImpact'],
+                    scorePerformance: data['scorePerformance'],
+                    vitesses: List<double>.from(data['vitesses'].map((v) => v.toDouble())),
+                    coupsDroit: data['coupsDroit'],
+                    revers: data['revers'],
+                  );
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SessionRecapScreen(session: sessionData),
+                    ),
+                  );
+                },
+              );
+            },
           );
         },
       ),
@@ -259,14 +300,12 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
   int hitCount = 0;
   double accZ = 0;
   double speed = 0;
-  String hitType = '-'; // "Coup droit" ou "Revers"
-  List<String> allHits = []; // Pour récap éventuel
+  String hitType = '-';
   int lastHitTime = 0;
   double lastAccZ = 0;
   final double threshold = 3.5;
 
   List<double> sessionSpeeds = [];
-
   int coupsDroit = 0;
   int revers = 0;
 
@@ -289,7 +328,6 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
               int rawZ = _toSignedInt16(value[4], value[5]);
 
               double newAccZ = rawZ / 32768.0 * 16;
-              double newAccY = rawY / 32768.0 * 16;
 
               final now = DateTime.now().millisecondsSinceEpoch;
 
@@ -297,10 +335,9 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
                 hitCount++;
                 lastHitTime = now;
 
-                sessionSpeeds.add(speed); // Ajout à chaque frappe
+                sessionSpeeds.add(speed);
 
-                // Classification simple selon l'axe
-                if (newAccZ > 0) {
+                if (rawZ > 0) {
                   coupsDroit++;
                   hitType = "Coup droit";
                 } else {
@@ -333,14 +370,35 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
   }
 
   String mostFrequentZone() {
-    return "Z"; // À affiner plus tard selon heuristique
+    return "Z";
   }
 
   int calculateScore() {
     return (calculateAverageSpeed() / 80 * 100).clamp(0, 100).toInt();
   }
 
-  void endSession() {
+  Future<void> saveSessionToFirestore(SessionData session) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    print("📝 Enregistrement de la session en cours...");
+    await FirebaseFirestore.instance.collection('sessions').add({
+      'userId': user.uid,
+      'date': Timestamp.fromDate(session.date),
+      'frappes': session.frappes,
+      'vitesseMoyenne': session.vitesseMoyenne,
+      'zoneImpact': session.zoneImpact,
+      'scorePerformance': session.scorePerformance,
+      'vitesses': session.vitesses,
+      'coupsDroit': session.coupsDroit,
+      'revers': session.revers,
+    });
+    print("✅ Session enregistrée avec succès");
+  }
+
+  Future<void> endSession() async {
+    print("📍 Bouton 'Terminer la session' déclenché");
+
     final session = SessionData(
       date: DateTime.now(),
       frappes: hitCount,
@@ -352,6 +410,9 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
       revers: revers,
     );
 
+    await saveSessionToFirestore(session);
+
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => SessionRecapScreen(session: session)),
@@ -383,8 +444,6 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
             Text('📐 Accélération Z : ${accZ.toStringAsFixed(2)} G',
                 style: const TextStyle(fontSize: 18, color: Colors.white70)),
             const SizedBox(height: 30),
-
-            // Vitesse estimée
             Center(
               child: Column(
                 children: [
@@ -406,33 +465,14 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 40),
             Text('🧭 Dernier coup détecté : $hitType',
                 style: const TextStyle(fontSize: 18, color: Colors.white70)),
-
             const Spacer(),
-
             Center(
               child: ElevatedButton.icon(
-                onPressed: () {
-                  final session = SessionData(
-                    date: DateTime.now(),
-                    frappes: hitCount,
-                    vitesseMoyenne: calculateAverageSpeed(),
-                    zoneImpact: mostFrequentZone(),
-                    scorePerformance: calculateScore(),
-                    vitesses: sessionSpeeds,
-                    coupsDroit: coupsDroit,
-                    revers: revers,
-                  );
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SessionRecapScreen(session: session),
-                    ),
-                  );
+                onPressed: () async {
+                  await endSession(); // bien async maintenant
                 },
                 icon: const Icon(Icons.stop),
                 label: const Text("Terminer la session"),
@@ -457,7 +497,6 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
       ),
     );
   }
-
 }
 
 //------------------------------------------
@@ -484,6 +523,19 @@ class SessionData {
     required this.coupsDroit,
     required this.revers,
   });
+
+  factory SessionData.fromMap(Map<String, dynamic> data) {
+    return SessionData(
+      date: DateTime.parse(data['date']),
+      frappes: data['frappes'],
+      vitesseMoyenne: (data['vitesseMoyenne'] as num).toDouble(),
+      zoneImpact: data['zoneImpact'],
+      scorePerformance: data['scorePerformance'],
+      vitesses: List<double>.from((data['vitesses'] as List).map((v) => (v as num).toDouble())),
+      coupsDroit: data['coupsDroit'],
+      revers: data['revers'],
+    );
+  }
 }
 
 //-----------------------------------------
