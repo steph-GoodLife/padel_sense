@@ -137,6 +137,15 @@ class HomeScreen extends StatelessWidget {
               },
               child: const Text('📈 Historique des sessions'),
             ),
+            // ElevatedButton(
+            //   onPressed: () {
+            //     Navigator.push(
+            //       context,
+            //       MaterialPageRoute(builder: (_) => const FirestoreTestScreen()),
+            //     );
+            //   },
+            //   child: const Text("Test Firestore"),
+            // )
           ],
         ),
       ),
@@ -286,7 +295,6 @@ class SessionHistoryScreen extends StatelessWidget {
 // ---------------------------
 // Device Data Screen (lecture données BLE)
 // ---------------------------
-
 class DeviceDataScreen extends StatefulWidget {
   final BluetoothDevice device;
 
@@ -323,10 +331,7 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
           await charac.setNotifyValue(true);
           charac.value.listen((value) {
             if (value.length >= 6) {
-              int rawX = _toSignedInt16(value[0], value[1]);
-              int rawY = _toSignedInt16(value[2], value[3]);
               int rawZ = _toSignedInt16(value[4], value[5]);
-
               double newAccZ = rawZ / 32768.0 * 16;
 
               final now = DateTime.now().millisecondsSinceEpoch;
@@ -334,7 +339,6 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
               if ((newAccZ - lastAccZ).abs() > threshold && now - lastHitTime > 500) {
                 hitCount++;
                 lastHitTime = now;
-
                 sessionSpeeds.add(speed);
 
                 if (rawZ > 0) {
@@ -370,7 +374,7 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
   }
 
   String mostFrequentZone() {
-    return "Z";
+    return "Z"; // À affiner plus tard si besoin
   }
 
   int calculateScore() {
@@ -468,33 +472,35 @@ class _DeviceDataScreenState extends State<DeviceDataScreen> {
             const SizedBox(height: 40),
             Text('🧭 Dernier coup détecté : $hitType',
                 style: const TextStyle(fontSize: 18, color: Colors.white70)),
-            const Spacer(),
-            Center(
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  await endSession(); // bien async maintenant
-                },
-                icon: const Icon(Icons.stop),
-                label: const Text("Terminer la session"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
-                  textStyle: const TextStyle(fontSize: 18),
+            const SizedBox(height: 40),
+            SafeArea(
+              child: Center(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    await endSession();
+                  },
+                  icon: const Icon(Icons.stop),
+                  label: const Text("Terminer la session"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
+                    textStyle: const TextStyle(fontSize: 18),
+                  ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SettingsScreen()),
-          );
-        },
-        child: const Icon(Icons.settings),
-      ),
+      // floatingActionButton: FloatingActionButton(
+      //   onPressed: () {
+      //     Navigator.push(
+      //       context,
+      //       MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      //     );
+      //   },
+      //   child: const Icon(Icons.settings),
+      // ),
     );
   }
 }
@@ -1009,5 +1015,47 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 }
+
+// test test test enregistrement session isolé... pourra être effacé si ok
+// class FirestoreTestScreen extends StatelessWidget {
+//   const FirestoreTestScreen({super.key});
+
+//   Future<void> saveFakeSessionToFirestore() async {
+//     final user = FirebaseAuth.instance.currentUser;
+//     if (user == null) {
+//       print("❌ Aucun utilisateur connecté");
+//       return;
+//     }
+
+//     print("🧪 Tentative d’enregistrement d’une session de test...");
+
+//     await FirebaseFirestore.instance.collection('sessions').add({
+//       'userId': user.uid,
+//       'date': Timestamp.now(),
+//       'frappes': 10,
+//       'vitesseMoyenne': 55.2,
+//       'zoneImpact': 'Z',
+//       'scorePerformance': 88,
+//       'vitesses': [45.0, 55.0, 65.0],
+//       'coupsDroit': 6,
+//       'revers': 4,
+//     });
+
+//     print("✅ Session test enregistrée avec succès");
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(title: const Text("Test Firestore")),
+//       body: Center(
+//         child: ElevatedButton(
+//           onPressed: saveFakeSessionToFirestore,
+//           child: const Text("Enregistrer une session test"),
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 
