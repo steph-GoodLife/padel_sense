@@ -13,8 +13,8 @@ dependencies:
   flutter_blue_plus: ^1.26.1
 
   # Firebase
-  firebase_core: ^2.25.0
-  firebase_auth: ^4.16.0
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.4
   cloud_firestore: ^4.13.0
   firebase_storage: ^11.6.0
 
@@ -24,7 +24,11 @@ dependencies:
   # Icône de lancement
   flutter_launcher_icons: ^0.13.1
 
-  permission_handler: ^11.0.1
+  # Onboarding
+  shared_preferences: ^2.2.2
+  smooth_page_indicator: ^1.1.0
+
+  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
@@ -36,6 +40,10 @@ flutter:
     - assets/logo.png
     - assets/splash.png
     - assets/bg-resume.png
+    - assets/accueil-padalytics-screen-app.png
+    - assets/detect-frappe.png
+    - assets/historique.png
+    - assets/scan-raquette.png
 
 flutter_launcher_icons:
   android: true

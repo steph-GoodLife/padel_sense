@@ -7,10 +7,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('onboarding_seen', false);
+
   runApp(const PadalyticsApp());
 }
 
@@ -20,13 +26,9 @@ class PadalyticsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Padalytics',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      // home: const SplashScreen(), // <-- on démarre par cet écran
-      home: const AuthGate(),
+      title: 'Padalytics',
+      home: const AuthGate(), // 👈 ici uniquement AuthGate
     );
   }
 }
@@ -34,7 +36,6 @@ class PadalyticsApp extends StatelessWidget {
 // ---------------------------
 // Splash Screen avec animation
 // ---------------------------
-
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -48,40 +49,53 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void initState() {
-  super.initState();
+    super.initState();
 
-  _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1500),
-  );
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
 
-  _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-    CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-  );
+    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
 
-  _controller.forward();
+    _controller.forward();
 
-  _askPermissions().then((_) {
-    // On attend 3 secondes pour l'animation du splash
-    Timer(const Duration(seconds: 3), () {
-      final currentUser = FirebaseAuth.instance.currentUser;
-
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => currentUser != null ? const HomeScreen() : const WelcomeScreen(),
-        ),
-      );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleNavigation();
     });
-  });
-}
+  }
 
-Future<void> _askPermissions() async {
-  await [
-    Permission.bluetoothScan,
-    Permission.bluetoothConnect,
-    Permission.locationWhenInUse,
-  ].request();
-}
+  Future<void> _handleNavigation() async {
+    await _askPermissions();
+    await Future.delayed(const Duration(seconds: 2));
+
+    final prefs = await SharedPreferences.getInstance();
+    final onboardingSeen = prefs.getBool('onboarding_seen') ?? false;
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (!mounted) return; // ✅ très important
+
+    Widget nextScreen;
+    if (!onboardingSeen) {
+      nextScreen = const OnboardingScreen();
+    } else {
+      nextScreen = currentUser != null ? const HomeScreen() : const WelcomeScreen();
+    }
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => nextScreen),
+    );
+  }
+
+  Future<void> _askPermissions() async {
+    await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+  }
 
   @override
   void dispose() {
@@ -118,6 +132,11 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Text(
+              '🏠 Bienvenue sur HomeScreen',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -137,15 +156,6 @@ class HomeScreen extends StatelessWidget {
               },
               child: const Text('📈 Historique des sessions'),
             ),
-            // ElevatedButton(
-            //   onPressed: () {
-            //     Navigator.push(
-            //       context,
-            //       MaterialPageRoute(builder: (_) => const FirestoreTestScreen()),
-            //     );
-            //   },
-            //   child: const Text("Test Firestore"),
-            // )
           ],
         ),
       ),
@@ -827,6 +837,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+
+      if (!mounted) return;
+      Navigator.pop(context); // ✅ AuthGate prend le relais et redirige automatiquement
        // ou naviguer vers une page principale
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -914,7 +927,7 @@ class WelcomeScreen extends StatelessWidget {
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pushReplacement(
+                Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
                 );
@@ -931,22 +944,46 @@ class WelcomeScreen extends StatelessWidget {
 //------------------------
 // AUTH GATE
 //------------------------
-
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
+  Future<bool> _hasSeenOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('onboarding_seen') ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen(); // ou un loading
-        } else if (snapshot.hasData) {
-          return const HomeScreen(); // déjà connecté
-        } else {
-          return const WelcomeScreen(); // pas encore connecté
+    return FutureBuilder<bool>(
+      future: _hasSeenOnboarding(),
+      builder: (context, onboardingSnapshot) {
+        if (onboardingSnapshot.connectionState != ConnectionState.done) {
+          return const SplashScreen(); // ✅ un seul loader cohérent
         }
+
+        final onboardingSeen = onboardingSnapshot.data ?? false;
+
+        return StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, authSnapshot) {
+            if (authSnapshot.connectionState != ConnectionState.active) {
+              return const SplashScreen(); // ✅ même loader
+            }
+
+            final user = authSnapshot.data;
+
+            debugPrint("🧭 Onboarding vu : $onboardingSeen");
+            debugPrint("👤 Utilisateur connecté : ${user != null}");
+
+            if (!onboardingSeen) {
+              return const OnboardingScreen();
+            } else if (user != null) {
+              return const HomeScreen();
+            } else {
+              return const WelcomeScreen();
+            }
+          },
+        );
       },
     );
   }
@@ -978,23 +1015,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     setState(() {
-    _isLoading = true;
-    _errorMessage = null;
+      _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
-      ); 
+      );
+      if (!mounted) return;
+
+      // ✅ On revient au WelcomeScreen → AuthGate voit que l'utilisateur est connecté → affiche HomeScreen
+      Navigator.pop(context);
+
+      /// ✅ ferme l'écran actuel → `AuthGate` reconstruit en HomeScreen
     } on FirebaseAuthException catch (e) {
       setState(() {
-        _errorMessage = e.message;
+        _errorMessage = e.message ?? "Erreur lors de la connexion.";
       });
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -1053,7 +1096,7 @@ class SettingsScreen extends StatelessWidget {
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
                   (route) => false,
                 );
               },
@@ -1121,5 +1164,138 @@ class SettingsScreen extends StatelessWidget {
 //     );
 //   }
 // }
+
+//---------------------------------------
+// SLIDER ONBOARDING
+//---------------------------------------
+class OnboardingScreen extends StatefulWidget {
+  const OnboardingScreen({super.key});
+
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final PageController _controller = PageController();
+  bool _isLastPage = false;
+
+  final List<Map<String, String>> pages = [
+    {
+      "title": "Bienvenue dans Padalytics",
+      "description": "Votre assistant intelligent pour analyser vos frappes au padel !",
+      "image": "assets/accueil-padalytics-screen-app.png"
+    },
+    {
+      "title": "Analyse en temps réel",
+      "description": "Suivez vos coups droits, revers, et la vitesse de chaque frappe.",
+      "image": "assets/detect-frappe.png"
+    },
+    {
+      "title": "Historique & progression",
+      "description": "Visualisez votre historique de sessions et progressez plus vite.",
+      "image": "assets/historique.png"
+    },
+    {
+      "title": "Connectez votre capteur",
+      "description": "Assurez-vous que votre capteur BLE est allumé et à proximité.",
+      "image": "assets/scan-raquette.png"
+    },
+  ];
+
+  Future<void> _finishOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_seen', true);
+
+    if (!mounted) return;
+
+    // ⬇️ On déclenche la redirection via AuthGate
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: pages.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _isLastPage = index == pages.length - 1;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final page = pages[index];
+                  return Padding(
+                    padding: const EdgeInsets.all(30),
+                    child: Column(
+                      children: [
+                        Image.asset(page["image"]!, height: 250),
+                        const SizedBox(height: 30),
+                        Text(
+                          page["title"]!,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 15),
+                        Text(
+                          page["description"]!,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.white70,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SmoothPageIndicator(
+                    controller: _controller,
+                    count: pages.length,
+                    effect: const WormEffect(
+                      dotColor: Colors.white24,
+                      activeDotColor: Colors.white,
+                      dotHeight: 10,
+                      dotWidth: 10,
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: _isLastPage ? _finishOnboarding : () {
+                      _controller.nextPage(
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    child: Text(_isLastPage ? "Commencer" : "Suivant"),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 
