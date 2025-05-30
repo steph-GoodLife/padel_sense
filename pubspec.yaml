@@ -44,6 +44,7 @@ flutter:
     - assets/detect-frappe.png
     - assets/historique.png
     - assets/scan-raquette.png
+    - assets/default_profil.png
 
 flutter_launcher_icons:
   android: true
